@@ -1,0 +1,177 @@
+//define the graph size.
+const height = 700;
+const width = 960;
+
+//define the svg to draw on.
+var svg = d3.select('#container').
+append('svg').
+attr('height', height).
+attr('width', width);
+
+//define a path element to use when drawing the element (state/county) shapes.
+var path = d3.geoPath();
+
+//define the tooltip element, set opacity to 0 by default to hide it until mouseover.
+var tooltip = d3.select('body').
+append('div').
+style('opacity', 0).
+style('position', 'absolute').
+style('padding', '10px').
+style('border-radius', '10px').
+style('color', '#fffbf9').
+style('background-color', '#021b35').
+attr('id', 'tooltip');
+
+//define the links to the source data so it can be used in the queue function callback later.
+const EDUCATION_DATA = 'https://raw.githubusercontent.com/no-stack-dub-sack/testable-projects-fcc/master/src/data/choropleth_map/for_user_education.json';
+const COUNTIES_DATA = 'https://raw.githubusercontent.com/no-stack-dub-sack/testable-projects-fcc/master/src/data/choropleth_map/counties.json';
+
+//use the queue function to load multiple sources of data before interacting with them.
+d3.queue()
+//import the sourcedata, make sure they are in the otder of the callback functions expected parameters.
+.defer(d3.json, COUNTIES_DATA).
+defer(d3.json, EDUCATION_DATA)
+//one the above functions are executed, run the callback function to update the svg.
+.await(create_graph);
+
+//draw the map elements based off of the sourcedata.
+function create_graph(error, counties, education) {
+  if (error) throw error;
+
+  //pass bachelors info into it's own array.
+  var bachelorsInfo = [];
+
+  education.filter(function (obj) {
+    bachelorsInfo.push(obj.bachelorsOrHigher);
+  });
+
+  //define the color scale and the variables that drive it
+  var bachelorsMin = d3.min(bachelorsInfo);
+  var bachelorsMax = d3.max(bachelorsInfo);
+  var numberOfColors = 4;
+
+  var colorScale = d3.scaleQuantile().
+  domain(d3.range(bachelorsMin, bachelorsMax, (bachelorsMax - bachelorsMin) / numberOfColors))
+  //powered by d3-scale-chromatic
+  .range(d3.schemeBlues[5]);
+
+  //define and draw the state/county elements.
+  svg.append('g').
+  attr('class', 'counties').
+  selectAll('path')
+  //use topojson library to access each object defined in the sourcedata
+  .data(topojson.feature(counties, counties.objects.counties).features)
+  //define and draw the path elements
+  .enter().append('path').
+  attr('class', 'county').
+  attr('fill', function (d) {
+    //filter out any object that doesn't have matching id's from both datasets
+    var result = education.filter(function (obj) {
+      //cross reference the obj by it's id and return it so you can use it's data
+      return obj.fips == d.id;
+    });
+    //if both files have matching id's (true), return it's bachlorsOrHigher parameter. Then run that through the color scale to get the appropriate hex value.
+    if (result[0]) {
+      return colorScale(result[0].bachelorsOrHigher);
+    }
+    //if no match is found, return the hex value for 0 on the color scale
+    return color(0);
+  })
+  //add custom attributes for sourcedata values
+  .attr('data-fips', function (d) {
+    return d.id;
+  }).
+  attr('data-education', function (d) {
+    var result = education.filter(function (obj) {
+      //cross reference the obj by it's id and return it so you can use it's data
+      return obj.fips == d.id;
+    });
+    if (result[0]) {
+      return result[0].bachelorsOrHigher;
+    }
+    return 0;
+  })
+
+  //use the geoPath function to transform sourcedata into path data that can be drawn. 
+  //set the d attribute to the geoPath dataGenerator, the generator takes a json.feature object and it generates svg minipath language instructions automatically. Essentially converting long/lat info and mapping it to x/y coordinates for mapping.
+  .attr('d', path)
+  //use custom mouseover function
+  .on('mouseover', handleMouseOver).
+  on('mouseout', function () {
+    tooltip.style('opacity', .0);
+  });
+
+  //define and draw the state boarders.
+  svg.append('path')
+  //returns the GeoJSON multilineString geometry object, the third parameter is a filter function that prevents border lines from being drawn on top of each other and on the outsides of the map.
+  .datum(topojson.mesh(counties, counties.objects.states, function (a, b) {
+    return a !== b;
+  })).
+  attr('class', 'states')
+  //use the geoPath function similarly to how the counties were drawn
+  .attr('d', path);
+
+  //define and draw the legend elements.
+  //define variables that are used to draw the legend
+  const legendWidth = 30;
+  const legendHeight = 20;
+  const legendData = [0].concat(colorScale.quantiles());
+
+  //define the legend element.
+  var legend = svg.append('g').
+  attr('id', 'legend').
+  attr('transform', 'translate(-420,0)');
+
+  //draw the legend color bar element.
+  legend.selectAll('#legend').
+  data(legendData).
+  enter().
+  append('rect').
+  attr('x', (d, i) => legendWidth * i + (width - legendWidth * legendData.length)).
+  attr('y', height - 50).
+  attr('width', legendWidth).
+  attr('height', legendHeight).
+  style('fill', (d, i) => colorScale(legendData[i]));
+
+  //draw the legend number label elements
+  svg.selectAll('.legend-label').
+  data(legendData).
+  enter().
+  append('text').
+  classed('legend-label', true).
+  attr('transform', 'translate(-420,0)').
+  attr('x', (d, i) => legendWidth * i + legendWidth / numberOfColors + (width - legendWidth * legendData.length)).
+  attr('y', height - 15).
+  style('font-size', '14px')
+  //remove any decimal and add a % sign to the text
+  .text(d => Math.floor(d) + '%');
+
+  //define custom mouseover function
+  function handleMouseOver(d) {
+    tooltip.style('opacity', .95).
+    style('pointer-events', 'none').
+    style('left', `${d3.event.x - 25}px`).
+    style('top', `${d3.event.y - 75}px`).
+    style('text-align', 'center').
+    html(function () {
+      var result = education.filter(function (obj) {
+        //cross reference the obj by it's id and return it so you can use it's data
+        return obj.fips == d.id;
+      });
+      if (result[0]) {
+        return result[0]['area_name'] + ', ' + result[0]['state'] + ': ' + result[0].bachelorsOrHigher + '%';
+      }
+      return 0;
+    }).
+    attr('data-education', function () {
+      var result = education.filter(function (obj) {
+        //cross reference the obj by it's id and return it so you can use it's data
+        return obj.fips == d.id;
+      });
+      if (result[0]) {
+        return result[0].bachelorsOrHigher;
+      }
+      return 0;
+    });
+  }
+}

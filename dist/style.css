@@ -1,0 +1,32 @@
+@import url("https://fonts.googleapis.com/css?family=Baloo+Bhai");
+
+h1, h2, text {
+  font-family: 'Baloo Bhai', cursive;
+  text-align: center;
+  color: #331900
+}
+
+#main {
+  background-color: #fff2e6;
+  padding: 20px;
+  margin: 20px;
+  border: 2px solid #331900;
+  border-radius: 10px
+}
+
+svg {
+  display: block;
+  margin: auto
+}
+
+.states {
+  /*only need the borders so counties show through*/
+  fill: none;
+  stroke-width: 2.5;
+  stroke: #331900
+}
+
+.county:hover {
+  stroke: #331900;
+  stroke-width: 2
+}
